@@ -1,0 +1,250 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(ggplot2)
+library(GGally)
+library(corrplot)
+library(ggpubr)
+library(MLmetrics)
+library(glmnet)
+library(randomForest)
+```
+
+asdasdasd
+
+```{r}
+data = read.csv("E:/Proyectos/Programacion/Company-Bankcrupcy-Prediction/data.csv", sep=',')
+# Observamos el contenido 
+str(dataset)
+
+```
+
+adasdas
+
+```{r}
+# Eliminamos columna que no aporta información
+which(apply(dataset, 2, var)==0)
+print(c("unique of this column:",unique(dataset$Net.Income.Flag)))
+data<-subset(data,select=-Net.Income.Flag)
+```
+
+asdasd
+```{r}
+cor.matrix<-as.matrix(cor(data))
+correlation<-sort(cor.matrix[2:95],decreasing = T)
+
+data1<-data[,-95]
+correlationMatrix <-cor(data1[,1:94])
+
+hist1 = ggplot(data, aes(Bankrupt.,)) + geom_bar(fill=c("Green","Red")) + theme_bw()+ggtitle("Survive(0) VS Bankruptcy(1)")+theme(plot.title = element_text(hjust = 0.5))+xlab("Survive(0)                              Bankruptcy(1)")
+corr1 = ggcorr(data[,1:20],size=2,hjust=1)+geom_point()+scale_alpha_manual()+guides()
+corr2 = corrplot(corr=correlationMatrix, tl.cex=0.1)
+```
+
+
+
+```{r}
+```
+
+
+```{r}
+#### Pca visualization
+
+data.pca.scale <- prcomp(data[,2:95], center=T ,scale = TRUE)
+#biplot(data.pca.scale, cex = 0.5)
+
+# Extract the variance explained 
+tot.var <- sum(data.pca.scale$sdev^2)
+var.explained <- data.frame(pc = seq(1:94), var.explained  = data.pca.scale$sdev^2/tot.var ) 
+ggplot(var.explained, aes(pc, var.explained)) + geom_bar(stat = "identity") + ggtitle("Bankruptcy")
+
+data.df <- data.frame(PC1 = data.pca.scale$x[,1], PC2 = data.pca.scale$x[,2], PC3 = data.pca.scale$x[,3], labels = as.factor(data$Bankrupt.))
+ggplot(data.df, aes(PC1, PC2, col = labels)) + geom_point()
+```
+
+
+```{r}
+# Eliminamos la columna sobrante junto con la de clasificación y numeración
+
+data <-subset(dataset,data=-Net.Income.Flag)
+x = data[,-1]
+y = data$Bankrupt
+
+data$Bankrupt<-as.factor(y) #preprocess set Bankrupt. as factor
+dataTrain$Bankrup.<-as.factor(ifelse(data$Bankrupt==0,'No','Yes'))
+
+```
+
+```{r}
+ggplot(data, aes(Bankrupt.,)) + geom_bar(fill=c("Green","Red")) + theme_bw()+ggtitle("Survive(0) VS Bankruptcy(1)")+theme(plot.title = element_text(hjust = 0.5))+xlab("Survive(0)                              Bankruptcy(1)")
+cor.matrix<-as.matrix(cor(data))
+correlation<-sort(cor.matrix[2:95],decreasing = T)
+#### number of classes,220 bankruptcy vs 6599 survive companies
+
+print(c((paste0("Bankrupt:",nrow(data[data$Bankrupt.=="1",]))),(paste0("Surivive:",nrow(data[data$Bankrupt.=="0",])))))
+print("number of classes,220 bankruptcy vs 6599 survive companies")
+```
+
+
+```{r}
+
+#boxplot check outliers
+par(mfrow = c(2,4))
+for (i in seq(2:9))
+  boxplot(data[,i],xlab=colnames(data)[i],col=i)
+
+```
+
+asdasd
+```{r}
+suppressMessages(library(MLmetrics))
+suppressMessages(library(caret))
+suppressMessages(library(glmnet))
+data$Bankrupt.<-as.factor(data$Bankrupt.)#preprocess set Bankrupt. as factor
+set.seed(1)
+#divide into training and testing data
+inTrain <- createDataPartition(data$Bankrupt., p = .75)[[1]]#training set 75%
+dataTrain <- data[ inTrain, ]
+dataTest  <- data[-inTrain, ]
+dataTest$Bankrupt.<-as.factor(ifelse(dataTest$Bankrupt.==0,'No','Yes'))
+dataTrain$Bankrupt.<-as.factor(ifelse(dataTrain$Bankrupt.==0,'No','Yes'))
+
+```
+
+```{r}
+
+#LR with all features
+set.seed(1)
+model_all_features <-glm(Bankrupt.~.,data=dataTrain,
+             family=binomial(link='logit'))
+model_all_features.preds<-as.vector(ifelse(predict(model_all_features,dataTest)>0.5,"Yes","No"))
+
+cm_model_all_features<-confusionMatrix(data=as.factor(model_all_features.preds),dataTest$Bankrupt.)
+cm_model_all_features
+print(c(paste0("Accuracy of LR with all features:",mean(model_all_features.preds == dataTest$Bankrupt.))))
+print(c(paste0("F1-score of LR with all features:",F1_Score(model_all_features.preds,dataTest$Bankrupt.))))
+
+
+```
+
+
+```{r}
+
+varImp<-varImp(model_all_features)
+varImp$labels <- factor(rownames(varImp))
+varImp$labels <- reorder(varImp$labels, varImp$Overall)
+plot(x = varImp$Overall, y = varImp$labels, main = "Variable Importance", 
+  yaxt = "n", ylab = "", xlab = "")
+axis(2, at = 1:nrow(varImp), labels = levels(varImp$labels), las = 2)
+title(xlab = "Importance")
+
+```
+# Feature selection
+
+```{r}
+#Feature selection function for logistic regression with top specificity
+selectFeature <- function(train, test, features) {
+  ## identify a feature to be selected
+  current.best.accuracy <- -Inf
+  selected.i <- NULL
+  for(i in seq(ncol(train))) {
+    current.f <- colnames(train)[i]
+    if(!current.f %in% c(features,"Bankrupt.")) {
+      model <- glm(Bankrupt.~.,data=dataTrain[,c(features,current.f,"Bankrupt.")],
+             family=binomial(link='logit'))
+      model.preds<-as.vector(ifelse(predict(model,dataTest)>0.5,"Yes","No"))
+      cm<-confusionMatrix(data=as.factor(model.preds),dataTest$Bankrupt.)
+      test.acc <- cm[["byClass"]][["Specificity"]]
+      
+      if(test.acc > current.best.accuracy) {
+        current.best.accuracy <- test.acc
+        selected.i <- colnames(train)[i]
+      }
+    }
+  }
+  return(selected.i)
+}
+
+```
+
+
+```{r}
+#select top features
+features <- NULL
+for (j in 1:ncol(data)) {
+  selected.i <- selectFeature(dataTrain,dataTest,features)
+
+  # add the best feature from current run
+  features <- c(features, selected.i)
+}
+
+write.csv(features, file = "features.csv")
+
+```
+
+Eliminación por random forest
+
+
+```{r}
+# Features
+x <- data %>% as.data.frame()
+
+# Target variable
+y <- data$Bankrupt.
+
+# Training: 80%; Test: 20%
+inTrain <- createDataPartition(y, p = .80, list = FALSE)[,1]
+
+x_train <- x[ inTrain, ]
+x_test  <- x[-inTrain, ]
+
+y_train <- y[ inTrain]
+y_test  <- y[-inTrain]
+
+
+```
+
+
+```{r}
+# Define the control using a random forest selection function
+control <- rfeControl(functions = rfFuncs, # random forest
+                      method = "repeatedcv", # repeated cv
+                      repeats = 5, # number of repeats
+                      number = 10) # number of folds
+# Run RFE
+result_rfe1 <- rfe(x = x_train, y = y_train, sizes = c(1:90), rfeControl = control)
+
+# Print the results
+result_rfe1
+
+# Print the selected features
+predictors(result_rfe1)
+
+# Print the results visually
+ggplot(data = result_rfe1, metric = "Accuracy") + theme_bw()
+ggplot(data = result_rfe1, metric = "Kappa") + theme_bw()
+
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.

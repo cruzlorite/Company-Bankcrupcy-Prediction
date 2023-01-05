@@ -1,0 +1,76 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+# https://www.cienciadedatos.net/documentos/37_clustering_y_heatmaps 
+# https://www.cienciadedatos.net/documentos/31_seleccion_de_predictores_subset_selection_ridge_lasso_dimension_reduction#Comparaci%C3%B3n 
+
+# Loading package
+library(ClusterR)
+library(cluster)
+library(caret)
+
+# Cargamos dataset
+dataset = read.csv("E:/Proyectos/Programacion/Company-Bankcrupcy-Prediction/data.csv", sep=',')
+
+# Observamos el contenido 
+str(dataset)
+
+# Eliminamos columna que no aporta información
+which(apply(dataset, 2, var)==0)
+print(c("unique of this column:",unique(dataset$Net.Income.Flag)))
+
+# Eliminamos la columna sobrante junto con la de clasificación y numeración
+
+dataset <-subset(dataset,select=-Net.Income.Flag)
+x = dataset[,-1]
+y = dataset$Bankrupt
+str(dataset)
+
+# Normalizamos los datos
+process = preProcess(as.data.frame(dataset_1), method=c("range"))
+norm_scale = predict(process, as.data.frame(dataset_1))
+str(norm_scale)
+
+# Seleccionamos semilla de aletoriedad
+set.seed(0) 
+
+# Ajustamos el valor de kmeans
+vector_compactacion = 0
+iteraciones = 50
+for(i in 1:iteraciones){
+  km_puntos_aux2<-kmeans(norm_scale,center=i,nstar=20)
+  vector_compactacion[i] <- km_puntos_aux2$tot.withinss
+}
+
+# Construye rejilla 1x1
+par(mfrow = c(1,1)) 
+
+# Representamos sum of squares vs. number of clusters
+plot(1:iteraciones, vector_compactacion, type = "b",xlab = "Numero de clusters", ylab = "Compactacion")
+
+
+# Cluster identification for each observation
+kmeansFinal<-kmeans(dataset_1,center=2,nstar=20) 
+
+# Confusion Matrix
+cm1 = table(dataset$Bankrupt, kmeansFinal$cluster)
+cm1
+ 
+# Model Evaluation and visualization
+
+
+ 
+# Plotiing cluster centers
+kmeans$centers
+kmeans$centers[, c(a,b)]
+ 
+# cex is font size, pch is symbol
+points(kmeans$centers[, c(a,b)],col = 1:3, pch = 8, cex = 3)
+ 
+# Visualizing clusters
+y_kmeans <- kmeans$cluster
+clusplot(norm_scale[, c(a, b)],y_kmeans,lines = 0,shade = TRUE,color = TRUE,labels = 2,plotchar = FALSE,span = TRUE,
+                      main = paste("Cluster bankrupt"),xlab = a,ylab = b)
+
+
