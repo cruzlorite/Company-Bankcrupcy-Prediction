@@ -1,0 +1,172 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# Librerias usadas
+
+```{r}
+library(readr)
+library(ggplot2)
+library(GGally)
+library(corrplot)
+library(ggpubr)
+library(MLmetrics)
+library(glmnet)
+library(randomForest)
+library(ClusterR)
+library(cluster)
+library(caret)
+library(umap)
+library(tidyverse)
+```
+# Analisis exploratorio
+## Carga de datos y observación
+
+```{r}
+set.seed(0) 
+data = read.csv("data.csv", sep=',')
+str(data)
+```
+
+## Investigamos si hay alguna variable que no tenga información relevante y eliminamos las que no aporten en caso de necesidad
+```{r}
+which(apply(data, 2, var)==0)
+
+## Eliminamos la variable que no aporta valor
+data = subset(data,select=-Net.Income.Flag)
+
+```
+# Visualizacion de datos
+
+```{r}
+par(mfrow = c(2, 3))
+plot(data$Bankrupt, main = "Barplot1")
+plot(data$Bankrupt, main = "Barplot2")
+plot(data$Bankrupt, main = "Barplot3")
+plot(data$Bankrupt, main = "Barplot4")
+plot(data$Bankrupt, main = "Barplot5")
+plot(data$Bankrupt, main = "Barplot6")
+
+
+plot(data[, 1:3], main = "Correlation plot")
+```
+
+# Reducción de dimensiones
+
+## Algoritmo de RFECV aplicando random forest como clasificador
+
+
+```{r}
+data_filtered = data %>% select(c('Non.industry.income.and.expenditure.revenue','Persistent.EPS.in.the.Last.Four.Seasons','Per.Share.Net.profit.before.tax..Yuan...','Interest.Expense.Ratio','Borrowing.dependency','Net.profit.before.tax.Paid.in.capital','Cash.Total.Assets','Net.Income.to.Stockholder.s.Equity','Equity.to.Liability'))
+```
+
+# Normalizacion de datos
+```{r}
+process = preProcess(as.data.frame(data_filtered), method=c("range"))
+data_scaled = predict(process, as.data.frame(data_filtered))
+```
+
+## Division de datos
+```{r}
+X = data_scaled
+y = data$Bankrupt.
+y_factor = as.factor(y)
+data$Bankrupt <- factor(data$Bankrupt., labels = list("Solvente", "Bancarrota"))
+data = data[,-1]
+```
+
+
+# Supervisado
+```{r}
+
+trControl = trainControl(method = "cv", number = 1,classProbs = TRUE, summaryFunction = twoClassSummary)
+xgbtree_fit1 = train(Bankrupt~., data, method = "xgbTree", metric="ROC", tuneLength=10, trControl=trControl)
+
+xgbtree_fit2 = train(Bankrupt~., data, method = "xgbTree", metric="ROC", tuneLength=3, trControl=trControl)
+
+xgbtree_fit2
+
+``` 
+
+# No supervisado
+
+## K-means
+```{r}
+# Ajustamos el valor de kmeans
+vector_compactacion = 0
+iteraciones = 15
+for(i in 1:iteraciones){
+  kmeans_results<-kmeans(data_scaled,center=i,nstar=20)
+  vector_compactacion[i] <- kmeans_results$tot.withinss
+}
+
+# Construye rejilla 1x1
+par(mfrow = c(1,1)) 
+
+# Representamos sum of squares vs. number of clusters
+plot(1:iteraciones, vector_compactacion, type = "b",xlab = "Numero de clusters", ylab = "Compactacion")
+```
+### Kmeans final
+```{r}
+kmeansFiltered<-kmeans(data_filtered,center=2,nstar=25)
+kmeansFiltered
+
+```
+
+
+```{r}
+# Con valores normalizados
+kmeansFinal<-kmeans(data_scaled,center=2,nstar=20)
+kmeansFinal
+
+```
+
+###Matriz de confusion para Kmeans
+```{r}
+
+CM_notSupervisedFiltered = table(data$Bankrupt, kmeansFiltered$cluster)
+CM_notSupervisedFiltered
+```
+
+```{r}
+
+CM_notSupervised = table(data$Bankrupt, kmeansFinal$cluster)
+CM_notSupervised
+```
+
+
+```{r}
+pred = factor(data$Bankrupt, labels = list("Solvente", "Bancarota"))
+reference = factor(kmeansFinal$cluster, labels = list("Solvente", "Bancarota"))
+cmat = confusionMatrix(pred, reference)
+cmat
+```
+###Representacion matriz confusion
+```{r}
+fourfoldplot(cmat$table, color = c("#99CC99","#CC6666"), conf.level = 0, margin=1,main = "Confusion Matrix")
+```
+
+
+```{r}
+# cex is font size, pch is symbol
+points(kmeansFinal$centers[, c('Non.industry.income.and.expenditure.revenue','Persistent.EPS.in.the.Last.Four.Seasons')],col = 1:3, pch = 8, cex = 3)
+ 
+# Visualizing clusters
+
+## Cusplot 
+clusplot(data_scaled, kmeansFinal$cluster, main = 'Representacion clusters', color=1, labels=2)
+
+```
+
+## Usamos umap para ...
+
+```{r}
+data_umap.labels = as.factor(ifelse(data$Bankrupt.==0,'Survived','Bankrupt'))
+data_umap = umap(data_scaled)
+str(data_umap)
+plot(x = data_umap, y=data_umap.labels)
+
+p = ggplot(data = as.data.frame(data_umap$layout), aes(x = V1, y = V2, colour = data$Bankrupt))
+p + geom_point(show.legend = FALSE) + ggtitle("Figura 2. Representación gráfica de los datos (umap).")
+```

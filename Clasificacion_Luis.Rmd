@@ -18,8 +18,12 @@ asdasdasd
 ```{r}
 data = read.csv("E:/Proyectos/Programacion/Company-Bankcrupcy-Prediction/data.csv", sep=',')
 # Observamos el contenido 
-str(dataset)
+str(data)
 
+
+get_names = names(data)[sapply(data, is.factor)]
+data = data[,get_names]
+data
 ```
 
 adasdas
