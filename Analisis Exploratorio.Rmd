@@ -1,0 +1,277 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+
+# instalar paquetes
+install.packages("tidyverse")
+install.packages("dplyr")
+install.packages("ggplot2")
+install.packages("devtools")
+
+
+#cargar paquetes
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(car)
+library(devtools)
+library(cowplot)
+library(reshape2)
+
+```
+
+### Carga y Limpieza de Datos:
+
+```{r}
+#Leer el fichero
+data = read.csv("./data.csv", sep=',')
+data <- data
+# renombrar las columnas del data frame
+names(data) <- tolower(names(data))
+names(data) <- gsub(" ", "", names(data))
+
+# Usamos la funcion glimpse() para obtener un resumen del contenido del data set
+glimpse(data)
+```
+Observamos que el data set tiene 6,819 filas y 96 columnas.
+
+Los datos categoricos aparecen como tipo integer (int) y los datos numericos como tipo double (dbl).
+
+```{r}
+# revisamos si hay missing values
+
+sum(is.na(data))
+
+# visualmente se puede hacer de esta forma
+
+# crear un data frame con los missing values para cada columna
+missing <- data.frame(colSums(is.na(data)))
+names(missing) <- "missing"
+missing$variable <- rownames(missing)
+
+# create a heatmap usando ng the ggplot2 package
+ggplot(missing, aes(variable, reorder(variable, -missing))) +
+  geom_tile(aes(fill = missing), color = "white") +
+  scale_fill_gradient(low = "white", high = "red") +
+  labs(title = "Missing Values en el Data Frame",
+       x = "", y = "") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, size = 2),
+        axis.text.y = element_text(size = 2))
+```
+Observamos que el dataser no tiene missing values, por lo que podemos pasar a analizar la data.
+
+
+### Visualizacion de los Datos:
+
+```{r}
+
+c_bankrupt <- as.factor(data$bankrupt)
+
+# create a bar plot using the ggplot2 package
+ggplot(data, aes(x = c_bankrupt, fill = c_bankrupt)) +
+  geom_bar(color = "black") +
+  labs(title = "Countplot de Bankrupt",
+       x = "Bankrupt", y = "Count") +
+  theme_minimal()
+
+```
+Se puede observar que los registros de "Bankrupt" estan muy desbalanceados. Por lo que es necesario considerar balancear el dataset usando tecnicas como Upsampling y Downsampling.
+
+Cuando usamos la funcion glimplse() para obtener un resumen de los datos del data set, observamos que la mayoria de los datos eran de tipo double (dbl). Los datos categoricos son distinguidos de forma binaria (1 y 0), por lo que aparecen como tipo integer (int).
+
+Separemos los datos numericos de los datos categoricos para analizar el dataser:
+
+
+```{r}
+# identificamos y separamos la data segun tipo
+
+double_features <- data %>% select_if(is.double)
+
+categorical_features <- data %>% select_if(is.integer)
+
+categorical_columns <- names(categorical_features)
+
+categorical_columns
+
+```
+  El dataset solo contiene 3 columnas con valores categoricos. Exploremos estas columnas primero:
+  
+```{r}
+
+c_liability_assets <- as.factor(data$liability.assets.flag)
+
+# crear primer bar plot
+p1 <- ggplot(data, aes(x = c_liability_assets, fill = c_liability_assets)) +
+  geom_bar() +
+  labs(title = "Countplot de Liability-Assets flag",
+       x = "Liability-Assets flag", y = "Count") +
+  theme_minimal()
+
+# crear segundo bar plot
+p2 <- ggplot(data, aes(x = c_liability_assets, fill = c_bankrupt)) +
+  geom_bar() +
+  labs(title = "Countplot de Liability-Assets flag",
+       x = "Liability-Assets flag", y = "Count") +
+  theme_minimal()
+
+plot_grid(p1,p2)
+
+data %>% count(liability.assets.flag)
+
+```
+
+El indicador "Liability-Assets" ("Activos-Pasivos") denota el estado de una organizacion, donde si los pasivos totales exceden los activos totales, el valor marcado sera 1, de lo contrario, el valor sera 0.
+
+-La mayoria de las veces, los activos de las empresas u organizaciones son mayores que sus pasivos.
+
+-Una pequeña parte de las organizaciones llegan a la bancarrota, aunque tengan mas activos que pasivos.
+
+```{r}
+c_net_income <- as.factor(data$net.income.flag)
+
+# create a bar plot using the ggplot2 package
+p1 <- ggplot(data, aes(x = c_net_income, fill = c_net_income)) +
+  geom_bar() +
+  labs(title = "Countplot de Net Income flag",
+       x = "Net Income flag", y = "Count") +
+  theme_minimal()
+
+# create a bar plot using the ggplot2 package
+p2 <- ggplot(data, aes(x = c_net_income, fill = c_bankrupt)) +
+  geom_bar() +
+  labs(title = "Countplot de Net Income flag",
+       x = "Net Income flag", y = "Count") +
+  theme_minimal()
+
+plot_grid(p1,p2)
+
+data %>% count(net.income.flag)
+
+```
+El indicador de "Net Income" ("Ingresos Netos") denota el estado de los ingresos de una organización en los últimos dos años, donde si los ingresos netos son negativos durante los últimos dos años, el valor marcado será 1, de lo contrario el valor es 0.
+
+-Observamos que todos los los registros han estado exhibiendo una pérdida durante los últimos dos años.
+
+-Muchas organizaciones que han sufrido pérdidas durante los últimos dos años han estabilizado su negocio, evitando llegar a la bancarrota.
+
+```{r}
+
+# obtenemos la correlacion entre las columnas numericas y la columna "Bankrupt"
+
+correlaciones <- cor(data[,colnames(double_features)], data["bankrupt."])
+
+correlaciones[order(correlaciones),,drop=FALSE]
+
+
+```
+
+Por simplicidad, analizaremoss los seis atributos con mayor correlacion positiva y negativa.
+
+
+```{r}
+
+corr_positiva <- rev(tail(rownames(correlaciones[order(correlaciones),,drop=FALSE]),6))
+corr_negativa <- rownames(correlaciones[order(correlaciones),,drop=FALSE])[1:6]
+
+
+corr_positiva <- data[, c(corr_positiva, "bankrupt.")]
+corr_negativa <- data[, c(corr_negativa, "bankrupt.")]
+
+colnames(corr_positiva)
+colnames(corr_negativa)
+
+```
+```{r}
+# Calcular correlacion media para cada columna
+df_mean_p1 <- corr_positiva %>% group_by(bankrupt.) %>% summarize(mean_p1 = mean(debt.ratio..))
+df_mean_p2 <- corr_positiva %>% group_by(bankrupt.) %>% summarize(mean_p2 = mean(current.liability.to.assets))
+df_mean_p3 <- corr_positiva %>% group_by(bankrupt.) %>% summarize(mean_p3 = mean(borrowing.dependency))
+df_mean_p4 <- corr_positiva %>% group_by(bankrupt.) %>% summarize(mean_p4 = mean(current.liability.to.current.assets))
+df_mean_p5 <- corr_positiva %>% group_by(bankrupt.) %>% summarize(mean_p5 = mean(liability.to.equity))
+df_mean_p6 <- corr_positiva %>% group_by(bankrupt.) %>% summarize(mean_p6 = mean(current.liability.to.equity))
+
+# Crear a barplots
+plot_grid(ggplot(df_mean_p1, aes(x=as.factor(bankrupt.), y=mean_p1, fill=as.factor(bankrupt.))) + geom_col() + theme_minimal() + labs( x = "Bankrupt", y = "debt.ratio.."),
+ggplot(df_mean_p2, aes(x=as.factor(bankrupt.), y=mean_p2, fill=as.factor(bankrupt.))) + geom_col() + theme_minimal() + labs( x = "Bankrupt", y = "current.liability.to.assets"),
+ggplot(df_mean_p3, aes(x=as.factor(bankrupt.), y=mean_p3, fill=as.factor(bankrupt.))) + geom_col() + theme_minimal() + labs( x = "Bankrupt", y = "borrowing.dependency"),
+ggplot(df_mean_p4, aes(x=as.factor(bankrupt.), y=mean_p4, fill=as.factor(bankrupt.))) + geom_col() + theme_minimal() + labs( x = "Bankrupt", y = "current.liability.to.current.assets"),
+ggplot(df_mean_p5, aes(x=as.factor(bankrupt.), y=mean_p5, fill=as.factor(bankrupt.))) + geom_col() + theme_minimal() + labs( x = "Bankrupt", y = "liability.to.equity"),
+ggplot(df_mean_p6, aes(x=as.factor(bankrupt.), y=mean_p6, fill=as.factor(bankrupt.))) + geom_col() + theme_minimal() + labs( x = "Bankrupt", y = "current.liability.to.equity"), nrow = 2, ncol = 3)
+```
+
+Observamos que los 3 atributos: "Debt Ratio %", "Current Liability to Assets" y "Current Liability to Current Assets" son comunmente altos en organizaciones o empresas que llegan a la bancarrota.
+
+```{r}
+# Calcular correlacion media para cada columna
+df_mean_p1 <- corr_negativa %>% group_by(bankrupt.) %>% summarize(mean_p1 = mean(net.income.to.total.assets))
+df_mean_p2 <- corr_negativa %>% group_by(bankrupt.) %>% summarize(mean_p2 = mean(roa.a..before.interest.and...after.tax))
+df_mean_p3 <- corr_negativa %>% group_by(bankrupt.) %>% summarize(mean_p3 = mean(roa.b..before.interest.and.depreciation.after.tax))
+df_mean_p4 <- corr_negativa %>% group_by(bankrupt.) %>% summarize(mean_p4 = mean(roa.c..before.interest.and.depreciation.before.interest))
+df_mean_p5 <- corr_negativa %>% group_by(bankrupt.) %>% summarize(mean_p5 = mean(net.worth.assets))
+df_mean_p6 <- corr_negativa %>% group_by(bankrupt.) %>% summarize(mean_p6 = mean(persistent.eps.in.the.last.four.seasons))
+
+# Crear a barplots
+plot_grid(ggplot(df_mean_p1, aes(x=as.factor(bankrupt.), y=mean_p1, fill=as.factor(bankrupt.))) + geom_col() + theme_minimal() + labs( x = "Bankrupt", y = "net.income.to.total.assets"),
+ggplot(df_mean_p2, aes(x=as.factor(bankrupt.), y=mean_p2, fill=as.factor(bankrupt.))) + geom_col() + theme_minimal() + labs( x = "Bankrupt", y = "ROA (A)"),
+ggplot(df_mean_p3, aes(x=as.factor(bankrupt.), y=mean_p3, fill=as.factor(bankrupt.))) + geom_col() + theme_minimal() + labs( x = "Bankrupt", y = "ROA (B)"),
+ggplot(df_mean_p4, aes(x=as.factor(bankrupt.), y=mean_p4, fill=as.factor(bankrupt.))) + geom_col() + theme_minimal() + labs( x = "Bankrupt", y = "ROA (C)"),
+ggplot(df_mean_p5, aes(x=as.factor(bankrupt.), y=mean_p5, fill=as.factor(bankrupt.))) + geom_col() + theme_minimal() + labs( x = "Bankrupt", y = "net.worth.assets"),
+ggplot(df_mean_p6, aes(x=as.factor(bankrupt.), y=mean_p6, fill=as.factor(bankrupt.))) + geom_col() + theme_minimal() + labs( x = "Bankrupt", y = "persistent.eps.in.the.last.four.seasons"), nrow = 2, ncol = 3)
+```
+
+En general, estos atributos nos muestran que cuantos mas activos y ganancias tiene una organizacion, menos probable es que esta llegue a la bancarrota.
+
+
+Ahora veamos la relacion entre los 6 atributos con mas correlacion positiva y negativa entre ellos mismos.
+
+```{r}
+# Create first plot
+plot(x = data$debt.ratio.., y = data$current.liability.to.assets, xlab = "Debt Ratio", ylab = "Current Liability To Assets Ratio", pch = 19, col = "red", main = "Correlacion Entre Atributos Positivos")
+
+# Create second plot
+plot(x = data$borrowing.dependency, y = data$liability.to.equity, xlab = "Borrowing Dependency", ylab = "Liability To Equity Ratio", pch = 19, col = "red", main = "Correlacion Entre Atributos Positivos")
+
+```
+Se observa una relación positiva entre los atributos que tienen una alta correlación con el atributo objetivo ("Bankrupt").
+
+```{r}
+
+# Crear primer plot
+plot(x = data$roa.a..before.interest.and...after.tax, y = data$roa.b..before.interest.and.depreciation.after.tax, xlab = "ROA (A)", ylab = "ROA (B)", pch = 19, col = "red", main = "Correlacion entre Atributos Negativo")
+
+# Crear segundo plot
+plot(x = data$roa.b..before.interest.and.depreciation.after.tax, y = data$roa.c..before.interest.and.depreciation.before.interest, xlab = "ROA (B)", ylab = "ROA (A)", pch = 19, col = "red", main = "Correlacion Entre Atributos Negativos")
+
+```
+Se observa una relación positiva entre los atributos que tienen una baja correlación con el atributo objetivo ("Bakrupt").
+
+```{r}
+# Creamos matriz de correlaciones con los top 6 con mayor correlacion y los top 6 con menor correlacion
+relacion <- c(colnames(corr_positiva)[1:6], colnames(corr_negativa)[1:6])
+top_cor <- cor(data[,relacion])
+
+# Crear Heatmap de correlacion
+melted_cormat <- melt(top_cor)
+
+ggplot(data = melted_cormat, aes(x=Var2, y=Var1, fill=value)) + 
+  geom_tile() +
+  geom_text(aes(Var2, Var1, label = round(value, 2)), size = 2) +
+  scale_fill_gradient2(low = "blue", high = "red",
+                       limit = c(-1,1), name="Correlation") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1, size = 4), 
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        panel.background = element_blank())
+
+```
+
+Observamos varias correlaciones entre los top 12 atributos principales, una de las cuales es "Net Wortg Assets" y "Debt Ratio" que estan negativamente correlacionada entre sí.
+
